@@ -57,6 +57,7 @@ Note: It doesn't really encrypt the files, it just defines the region where the 
 #include <sys/stat.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <stdint.h>
 
 #if defined (__MSVCRT__)
 #undef __STRICT_ANSI__ // ugly
