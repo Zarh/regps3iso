@@ -70,13 +70,6 @@ Note: It doesn't really encrypt the files, it just defines the region where the 
 
 #include "iso.h"
 
-#define FAILED 	0
-#define SUCCESS 1
-#define NO		0
-#define YES		1
-
-#define ENDIAN_SWAP_32(x)		(((x) & 0x000000FF) << 24 | ((x) & 0x0000FF00) << 8 | \
-								 ((x) & 0x00FF0000) >>  8 | ((x) & 0xFF000000) >> 24  )
 								 
 // 64KB block size read by ps3
 #define _64KB_	0x20 * 0x800
@@ -112,101 +105,6 @@ char *GetExtension(char *path)
     return &path[n];
 }
 
-void old_ode_fix_iso(char *path)
-{
-	
-	struct stat s;
-	
-	if(stat(path, &s) != 0) {
-		printf("Error : file doesn't exist %s", path);
-		return;
-	} 
-	
-	FILE *f=fopen(path, "rb+");
-	if( f==NULL )  {
-		printf("Error : cannot open %s", path);
-		return;
-	}
-	
-	u64 blocks = s.st_size /( _64KB_ ) ;
-	
-	u8 *buffer = (u8 *) malloc( _64KB_ ); 
-	if( buffer == NULL) {
-		printf("Error : failed to malloc");
-		return;
-	}
-	
-	u32 plain_n = 0;
-	u32 first_sector[32]={0};
-	u32 last_sector[32]={0};
-	
-	u8 encrypted = NO;
-	u64 i,j, k=0;
-	for( i=0; i < blocks + 1; i++) {
-		memset(buffer, 0, _64KB_);
-		fread(buffer, _64KB_, 1, f);
-		
-		if( k <= (i * 100) / blocks) {
-			printf("%d%\n", k);
-			k+=10;
-		}
-		
-		u8 found = NO;
-		
-		/// search sector per sector MAGIC of SELF (SCE) and LIC.DAT (PS3LICDA) 
-		/// to know if the block is encrypted or plain
-		for(j = 0; j < 0x20; j++) {
-			if( memcmp((char *) buffer + j * 0x800 , (char *) "SCE", 3) == 0 
-			||  memcmp((char *) buffer + j * 0x800 , (char *) "PS3LICDA", 8) == 0 )
-			{
-				printf( "SELF or LIC.DAT found at block = %llX, sector %llX, offset %llX\n", i, i*0x20+j, (u64) ((i*0x20+j) * 0x800));		
-				found = YES;
-				break;
-			}
-		}
-		
-		if( found ) {
-			if( encrypted == NO) {
-				encrypted = YES;
-				last_sector[plain_n] = (u32) ((u32)i*(u32)0x20+(u32)(j-1));
-				printf("last %d = %X\n", plain_n, last_sector[plain_n]);
-				// last_sector[plain_n-1] = i*0x20;
-			}
-		} else {
-			if( encrypted == YES ) {
-				encrypted = NO;
-				plain_n++;
-				u32 temp = (u32) ((u32) i * (u32) 0x20);
-				first_sector[plain_n]  = temp;
-				printf("first %X\n", first_sector[plain_n]);
-			}
-		}
-	}
-	last_sector[plain_n]= (u32) (s.st_size / 0x800);
-	
-	fclose(f);
-	
-	plain_n++;
-	
-	printf("\n");
-	u32 zero  = 0;
-	f=fopen("test.bin", "wb");
-	fwrite(&plain_n, 4, 1, f);
-	fwrite(&zero, 4, 1, f);
-	int u;
-	for(u=0; u<plain_n; u++) {
-		//first_sector[i] =  ENDIAN_SWAP_32(first_sector[i]);
-		//last_sector[i] =  ENDIAN_SWAP_32(last_sector[i]);
-		printf("first %d = %X      ", u, first_sector[u]);
-		printf("last %d = %X\n", u, last_sector[u]);
-		
-		//fwrite(&first_sector[u], 4, 1, f);
-		//fwrite(&last_sector[u], 4, 1, f);
-	}
-	
-	fclose(f);
-}
-
 void get_plain_files(char *iso)
 {
 	FILE *f = fopen(iso, "rb");
@@ -218,7 +116,7 @@ void get_plain_files(char *iso)
 	u32 plain_n;
 	fread(&plain_n, 4, 1, f);
 	
-	plain_n = ENDIAN_SWAP(plain_n);
+	plain_n = SWAP_BE(plain_n);
 	
 	u32 start[plain_n];
 	u32 end[plain_n];
@@ -229,8 +127,8 @@ void get_plain_files(char *iso)
 		fread(&start[i], 4, 1, f);
 		fread(&end[i], 4, 1, f);
 		
-		start[i] = ENDIAN_SWAP(start[i]);
-		end[i] = ENDIAN_SWAP(end[i]);
+		start[i] = SWAP_BE(start[i]);
+		end[i] = SWAP_BE(end[i]);
 	}
 	fclose(f);
 	
@@ -336,7 +234,7 @@ void get_enc_files(char *iso)
 	u32 plain_n;
 	fread(&plain_n, 4, 1, f);
 	
-	plain_n = ENDIAN_SWAP(plain_n);
+	plain_n = SWAP_BE(plain_n);
 	
 	u32 start[plain_n];
 	u32 end[plain_n];
@@ -347,8 +245,8 @@ void get_enc_files(char *iso)
 		fread(&start[i], 4, 1, f);
 		fread(&end[i], 4, 1, f);
 		
-		start[i] = ENDIAN_SWAP(start[i]);
-		end[i] = ENDIAN_SWAP(end[i]);
+		start[i] = SWAP_BE(start[i]);
+		end[i] = SWAP_BE(end[i]);
 	}
 	fclose(f);
 	
@@ -509,7 +407,7 @@ void read_region_info(char *iso)
 	u32 plain_n;
 	fread(&plain_n, 4, 1, f);
 	
-	plain_n = ENDIAN_SWAP(plain_n);
+	plain_n = SWAP_BE(plain_n);
 	
 	u32 start[plain_n];
 	u32 end[plain_n];
@@ -521,8 +419,8 @@ void read_region_info(char *iso)
 		fread(&start[i], 4, 1, f);
 		fread(&end[i], 4, 1, f);
 		
-		start[i] = ENDIAN_SWAP(start[i]);
-		end[i] = ENDIAN_SWAP(end[i]);
+		start[i] = SWAP_BE(start[i]);
+		end[i] = SWAP_BE(end[i]);
 		
 		if( i != 0 ) {
 			sprintf(str, "0x%08X\n", start[i] - 1); 
@@ -653,11 +551,11 @@ void fixps3iso_region(char *iso)
 			return;
 		}
 		fread(&current_plain_n, 4, 1, f);
-		current_plain_n = ENDIAN_SWAP(current_plain_n);
+		current_plain_n = SWAP_BE(current_plain_n);
 		fseek(f, 8 + current_plain_n*8 - 4, SEEK_SET);
 		u32 tot_sec=0;
 		fread(&tot_sec, 4, 1, f);
-		end[plain_n-1] = ENDIAN_SWAP(tot_sec);
+		end[plain_n-1] = SWAP_BE(tot_sec);
 		fseek(f, 0, SEEK_SET);
 	} else 
 	if( strcasecmp(ext, ".iso") == 0) {
@@ -669,13 +567,13 @@ void fixps3iso_region(char *iso)
 		printf("Error : cannot fopen %s", iso);
 		return;
 	}
-	plain_n = ENDIAN_SWAP(plain_n);
+	plain_n = SWAP_BE(plain_n);
 	fwrite(&plain_n, 4, 1, f);
-	plain_n = ENDIAN_SWAP(plain_n);
+	plain_n = SWAP_BE(plain_n);
 	fseek(f, 8, SEEK_SET);
 	for(i=0; i<plain_n; i++) {
-		start[i] = ENDIAN_SWAP(start[i]);
-		end[i] = ENDIAN_SWAP(end[i]);
+		start[i] = SWAP_BE(start[i]);
+		end[i] = SWAP_BE(end[i]);
 		
 		fwrite(&start[i], 4, 1, f);
 		fwrite(&end[i], 4, 1, f);
